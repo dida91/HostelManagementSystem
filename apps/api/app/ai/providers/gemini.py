@@ -104,15 +104,30 @@ class _GeminiBase:
         Returns (result, retry_count). The loop is strictly bounded by
         GEMINI_MAX_RETRIES -- there is no unbounded retry path anywhere.
         """
+        from app.core.ratelimit import CircuitBreaker
+
+        breaker = CircuitBreaker(name=f"gemini:{operation}")
+        if await breaker.is_open():
+            # Fail fast rather than queueing behind a model we know is down.
+            raise GeminiError(
+                "Circuit open for this operation after repeated upstream failures.",
+                AIErrorCategory.UNAVAILABLE,
+                retryable=False,
+            )
+
         max_retries = self._settings.gemini_max_retries
         last: GeminiError | None = None
 
         for attempt in range(max_retries + 1):
             try:
-                return await fn(), attempt
+                result = await fn()
+                await breaker.record_success()
+                return result, attempt
             except Exception as exc:  # noqa: BLE001 - classified immediately below
                 err = classify_error(exc)
                 last = err
+                if err.retryable:
+                    await breaker.record_failure()
                 if not err.retryable or attempt >= max_retries:
                     break
                 # Full jitter: base * 2^attempt, randomised to avoid thundering herd.
@@ -334,6 +349,42 @@ class GeminiProvider(_GeminiBase):
         return types.Content(
             role="model" if role == "assistant" else "user",
             parts=[types.Part.from_text(text=message.get("content") or "")],
+        )
+
+    async def extract_document_text(
+        self, *, content: bytes, mime_type: str, hint: str | None = None
+    ) -> TextResult:
+        """Read a document Gemini can see but pypdf cannot parse.
+
+        Used only as a fallback for pages where native extraction yields too
+        little text -- sending every page through the model would be slow and
+        expensive for no benefit on text-native PDFs.
+        """
+        target = self._settings.gemini_text_model
+        instruction = (
+            "Transcribe all text from this document faithfully. Preserve headings, "
+            "numbered rules and list structure using Markdown. Do not summarise, "
+            "translate, or add commentary. If a page is blank, output nothing for it."
+        )
+        if hint:
+            instruction = f"{instruction}\n\nContext: {hint}"
+
+        async def _call() -> Any:
+            return await self._client.aio.models.generate_content(
+                model=target,
+                contents=[
+                    types.Part.from_bytes(data=content, mime_type=mime_type),
+                    types.Part.from_text(text=instruction),
+                ],
+                config=types.GenerateContentConfig(temperature=0.0),
+            )
+
+        response, retries = await self._with_retry(_call, operation="extract_document_text")
+        return TextResult(
+            text=response.text or "",
+            model=target,
+            usage=self._usage(response),
+            retry_count=retries,
         )
 
     async def count_tokens(self, *, text: str, model: str | None = None) -> int:

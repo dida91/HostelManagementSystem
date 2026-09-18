@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Request, Response, status
+from fastapi import APIRouter, Depends, Request, Response, status
 
-from app.api.deps import CurrentUser, SessionDep
+from app.api.deps import CurrentUser, SessionDep, rate_limit
 from app.core.config import get_settings
 from app.core.errors import AuthenticationError
 from app.schemas.common import LoginRequest, MeOut, TokenResponse
@@ -39,7 +39,12 @@ def _set_session_cookies(response: Response, access: str, refresh: str) -> None:
     )
 
 
-@router.post("/login", response_model=TokenResponse)
+@router.post(
+    "/login",
+    response_model=TokenResponse,
+    # Throttles credential stuffing against the resident directory.
+    dependencies=[Depends(rate_limit("auth"))],
+)
 async def login(
     payload: LoginRequest, request: Request, response: Response, session: SessionDep
 ) -> TokenResponse:

@@ -64,13 +64,55 @@ def _approx_tokens(text: str) -> int:
     return max(1, int(len(text) / chars_per_token))
 
 
+def _is_heading_line(line: str) -> bool:
+    """A heading is a single short line matching the heading patterns."""
+    stripped = line.strip()
+    return (
+        len(stripped) <= MAX_HEADING_CHARS
+        and "\n" not in stripped
+        and bool(_HEADING.match(stripped))
+    )
+
+
 def _is_heading(para: str) -> bool:
-    return len(para) <= MAX_HEADING_CHARS and bool(_HEADING.match(para))
+    return "\n" not in para and _is_heading_line(para)
 
 
 def _split_paragraphs(text: str) -> list[str]:
-    parts = re.split(r"\n\s*\n", text)
-    return [p.strip() for p in parts if p.strip()]
+    """Split into blocks, promoting heading LINES to their own block.
+
+    Splitting on blank lines alone is not enough: real documents routinely write
+
+        ## 3. Mess Timings
+        Dinner is served 7:00 PM to 9:00 PM.
+
+    with no blank line between. Treating that as one paragraph either merges the
+    section into its predecessor or makes the whole paragraph the section title,
+    which then shows up in citations.
+    """
+    blocks: list[str] = []
+    buffer: list[str] = []
+
+    def flush() -> None:
+        if buffer:
+            joined = "\n".join(buffer).strip()
+            if joined:
+                blocks.append(joined)
+            buffer.clear()
+
+    for raw_line in text.splitlines():
+        line = raw_line.rstrip()
+        if not line.strip():
+            flush()
+            continue
+        if _is_heading_line(line):
+            flush()
+            blocks.append(line.strip())
+            continue
+        buffer.append(line)
+
+    flush()
+    return blocks
 
 
 def chunk_text(

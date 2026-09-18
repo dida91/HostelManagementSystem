@@ -6,7 +6,7 @@ results and may explain them, but never produces them itself.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 
 from sqlalchemy import func, select
@@ -17,6 +17,7 @@ from app.models.complaint import Complaint
 from app.models.enums import (
     AssignmentStatus,
     LeaveStatus,
+    LeaveType,
     LedgerEntryType,
     UserRole,
 )
@@ -320,4 +321,155 @@ async def get_occupancy_summary(ctx: ToolContext, args: dict[str, Any]) -> dict[
         "vacant_beds": int(total_beds) - int(occupied),
         "occupancy_rate_percent": round(100 * occupied / total_beds, 1) if total_beds else 0.0,
         "as_of": datetime.now(UTC).isoformat(),
+    }
+
+
+# --------------------------------------------------------------------------
+# Document search (feeds the assistant's policy answers)
+# --------------------------------------------------------------------------
+
+
+@registry.register(
+    name="search_hostel_documents",
+    description=(
+        "Search official hostel documents (rules, fee/leave/mess policies, notices) "
+        "for a question about policy. Returns passages with their source, which you "
+        "must cite. Use this for any rules question rather than answering from memory."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "query": {"type": "string", "description": "The policy question to search for."}
+        },
+        "required": ["query"],
+    },
+    allowed_roles=ALL_ROLES,
+)
+async def search_hostel_documents(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    query = (args.get("query") or "").strip()
+    if not query:
+        return {"error": "bad_argument", "message": "A query is required."}
+
+    from app.ai.providers.registry import get_embedding_provider
+    from app.ai.services.embeddings import EmbeddingService
+    from app.ai.services.retrieval import RetrievalService
+
+    embeddings = EmbeddingService(get_embedding_provider())
+    vector = await embeddings.embed_query(
+        session=ctx.session, text=query, user_id=ctx.principal.user_id
+    )
+    chunks = await RetrievalService(embedding_model=embeddings.model_name).retrieve(
+        session=ctx.session, query=query, query_vector=vector, top_k=5
+    )
+    if not chunks:
+        return {
+            "found": False,
+            "message": "No hostel document covers this. Say so rather than guessing.",
+        }
+    return {
+        "found": True,
+        "passages": [
+            {
+                "source": c.source_label,
+                "document_title": c.document_title,
+                "page_number": c.page_number,
+                "section": c.section_path,
+                "text": c.text,
+            }
+            for c in chunks
+        ],
+    }
+
+
+# --------------------------------------------------------------------------
+# Write tools -- never auto-executed; the UI confirms with the user first
+# --------------------------------------------------------------------------
+
+
+@registry.register(
+    name="create_complaint",
+    description=(
+        "File a new complaint on behalf of the signed-in student. Only call this "
+        "after the student has clearly confirmed they want it filed."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "text": {
+                "type": "string",
+                "description": "The complaint in the student's own words.",
+            }
+        },
+        "required": ["text"],
+    },
+    allowed_roles=ALL_ROLES,
+    is_write=True,
+)
+async def create_complaint(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    sid = _require_student(ctx)
+    text = (args.get("text") or "").strip()
+    if len(text) < 10:
+        return {"error": "bad_argument", "message": "The complaint text is too short."}
+
+    from app.services.complaints import ComplaintService
+
+    complaint = await ComplaintService(ctx.session).create(student_id=sid, text=text)
+    return {
+        "created": True,
+        "complaint_id": str(complaint.id),
+        "status": complaint.status.value,
+        "message": "Complaint filed. Staff will review it.",
+    }
+
+
+@registry.register(
+    name="create_leave_request",
+    description=(
+        "Submit a leave request for the signed-in student. Only call this after the "
+        "student has confirmed the dates and reason."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "leave_type": {"type": "string", "enum": [t.value for t in LeaveType]},
+            "from_date": {"type": "string", "description": "Start date, YYYY-MM-DD."},
+            "to_date": {"type": "string", "description": "End date, YYYY-MM-DD."},
+            "reason": {"type": "string"},
+        },
+        "required": ["leave_type", "from_date", "to_date", "reason"],
+    },
+    allowed_roles=ALL_ROLES,
+    is_write=True,
+)
+async def create_leave_request(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    sid = _require_student(ctx)
+    try:
+        leave_type = LeaveType(args["leave_type"])
+        from_date = date.fromisoformat(args["from_date"])
+        to_date = date.fromisoformat(args["to_date"])
+    except (KeyError, ValueError) as exc:
+        return {"error": "bad_argument", "message": f"Invalid arguments: {exc}"}
+
+    if to_date < from_date:
+        return {"error": "bad_argument", "message": "End date cannot precede start date."}
+
+    reason = (args.get("reason") or "").strip()
+    if len(reason) < 5:
+        return {"error": "bad_argument", "message": "A reason is required."}
+
+    leave = LeaveRequest(
+        student_id=sid,
+        leave_type=leave_type,
+        from_date=from_date,
+        to_date=to_date,
+        reason=reason,
+        status=LeaveStatus.PENDING,
+    )
+    ctx.session.add(leave)
+    await ctx.session.flush()
+    return {
+        "created": True,
+        "leave_request_id": str(leave.id),
+        "status": leave.status.value,
+        "message": "Leave request submitted for warden approval.",
     }

@@ -1,17 +1,22 @@
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from app.ai.providers.registry import ai_is_available, get_embedding_provider, get_llm_provider
 from app.ai.services.chat import AssistantService
 from app.ai.services.embeddings import EmbeddingService
 from app.ai.services.rag import RagService
 from app.ai.services.retrieval import RetrievalService
-from app.api.deps import PrincipalDep, SessionDep
+from app.api.deps import PrincipalDep, SessionDep, rate_limit
 from app.core.errors import AIUnavailableError
 from app.schemas.complaint import AssistantAsk, AssistantReply, RagAsk, RagReply
 
-router = APIRouter(prefix="/assistant", tags=["assistant"])
+router = APIRouter(
+    prefix="/assistant",
+    tags=["assistant"],
+    # AI calls cost money and quota; limit them far more tightly than reads.
+    dependencies=[Depends(rate_limit("ai"))],
+)
 
 
 def _require_ai() -> None:

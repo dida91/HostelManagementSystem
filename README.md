@@ -80,6 +80,34 @@ cd apps/api
 Requires a real key. Reports land in `ai/evaluation/reports/`. No accuracy is
 claimed anywhere in this repo without a report to back it.
 
+## API surface
+
+32 endpoints under `/api/v1`:
+
+| Group | Endpoints |
+|---|---|
+| auth | login, refresh, logout, me |
+| students | list, create, get |
+| rooms | list, allocate, vacate |
+| complaints | create, list, get, staff override |
+| leave | request, list, approve/reject |
+| fees | balance, ledger, invoices, payments |
+| mess | menu, submit feedback, list feedback |
+| announcements | list, create |
+| documents | upload, list, reindex, delete |
+| assistant | ask (tool-calling), ask documents (RAG) |
+| analytics | overview, occupancy, complaints, fees, AI insights |
+| health | live, ready |
+
+## Background workers
+
+```bash
+cd apps/api
+./.venv/bin/celery -A app.workers.celery_app.celery_app worker -l info
+```
+
+Tasks: `ai.analyse_complaint`, `ai.analyse_mess_feedback`, `ai.ingest_document`.
+
 ## Documentation
 
 - [`docs/architecture.md`](docs/architecture.md) — full system design

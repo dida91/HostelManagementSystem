@@ -69,3 +69,34 @@ def test_chunks_stay_within_the_embedding_input_limit() -> None:
     nepali = "यो छात्रावासको नियम हो। विद्यार्थीले समयमा फर्कनुपर्छ। " * 200
     for chunk in chunk_text(nepali, max_tokens=600):
         assert chunk.token_count <= limit
+
+
+def test_heading_followed_immediately_by_body_is_split() -> None:
+    """Real documents rarely leave a blank line after a heading.
+
+    Without line-level heading detection, the section either merges into the
+    previous one or the entire paragraph becomes the section title, which then
+    appears verbatim in RAG citations.
+    """
+    doc = (
+        "# Rules\n\n"
+        "## 1. Entry Timings\n"
+        "Residents must return by 8 PM.\n\n"
+        "## 2. Mess Timings\n"
+        "Dinner is served 7 PM to 9 PM.\n"
+    )
+    chunks = chunk_text(doc)
+    sections = [c.section_path for c in chunks]
+    assert "1. Entry Timings" in sections
+    assert "2. Mess Timings" in sections
+    # A section title must never carry body text into a citation.
+    for section in sections:
+        assert section is not None
+        assert "\n" not in section
+        assert "served" not in section
+
+
+def test_section_titles_stay_short_enough_to_cite() -> None:
+    doc = "## Fees\nMonthly fees are due by the 7th. A late fee of NPR 500 applies.\n"
+    chunk = chunk_text(doc)[0]
+    assert chunk.section_path == "Fees"

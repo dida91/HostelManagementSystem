@@ -125,6 +125,17 @@ class LLMProvider(Protocol):
 
 
 @runtime_checkable
+class DocumentUnderstandingProvider(Protocol):
+    """Multimodal extraction for documents native text extraction cannot read
+    (scans, images, complex layout). Separate from LLMProvider so a provider can
+    implement text generation without implementing document understanding."""
+
+    async def extract_document_text(
+        self, *, content: bytes, mime_type: str, hint: str | None = None
+    ) -> TextResult: ...
+
+
+@runtime_checkable
 class EmbeddingProvider(Protocol):
     """Embedding generation. Kept separate so the embedding model can change
     independently of the text model."""

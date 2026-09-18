@@ -1,4 +1,4 @@
-.PHONY: up down api worker web test lint types migrate seed check
+.PHONY: up down api worker web test lint types migrate seed check eval
 
 up:      ; docker compose -f infrastructure/docker-compose.yml up -d
 down:    ; docker compose -f infrastructure/docker-compose.yml down
@@ -10,6 +10,11 @@ seed:    ; cd apps/api && ./.venv/bin/python scripts_seed.py
 test:    ; cd apps/api && ./.venv/bin/python -m pytest tests/ -q
 lint:    ; cd apps/api && ./.venv/bin/ruff check app tests && ./.venv/bin/ruff format --check app tests
 types:   ; cd apps/api && ./.venv/bin/mypy app
+
+# Evaluation against the real Gemini API (requires GEMINI_API_KEY).
+eval:
+	cd apps/api && ./.venv/bin/python ../../ai/evaluation/runners/eval_complaints.py
+	cd apps/api && ./.venv/bin/python ../../ai/evaluation/runners/eval_rag.py
 
 # Everything CI runs, locally.
 check: lint types

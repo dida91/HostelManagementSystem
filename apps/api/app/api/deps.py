@@ -82,6 +82,18 @@ async def get_principal(user: CurrentUser, session: SessionDep) -> Principal:
 PrincipalDep = Annotated[Principal, Depends(get_principal)]
 
 
+def rate_limit(bucket: str):  # type: ignore[no-untyped-def]
+    """Per-user (or per-IP when unauthenticated) rate limit for a bucket."""
+
+    async def _check(request: Request) -> None:
+        from app.core.ratelimit import enforce_rate_limit
+
+        identity = user_id_ctx.get() or (request.client.host if request.client else "anonymous")
+        await enforce_rate_limit(key=identity, bucket=bucket)
+
+    return _check
+
+
 def llm_provider() -> LLMProvider:
     return get_llm_provider()
 

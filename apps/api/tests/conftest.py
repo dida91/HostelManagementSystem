@@ -18,6 +18,31 @@ from app.models.user import Student, User  # noqa: E402
 
 
 @pytest_asyncio.fixture(autouse=True)
+async def _reset_rate_limits() -> AsyncIterator[None]:
+    """Clear rate-limit and circuit-breaker state between tests.
+
+    The limiter is real shared infrastructure, so without this the suite
+    throttles its own repeated logins. Resetting keys keeps the real limiter
+    under test while making each test independent -- the same reasoning as
+    rolling back the database between tests.
+    """
+    from app.core.ratelimit import get_redis
+
+    async def _flush() -> None:
+        try:
+            redis = get_redis()
+            for pattern in ("rl:*", "cb:*"):
+                if keys := [k async for k in redis.scan_iter(match=pattern)]:
+                    await redis.delete(*keys)
+        except Exception:  # noqa: BLE001 - tests must run without redis too
+            pass
+
+    await _flush()
+    yield
+    await _flush()
+
+
+@pytest_asyncio.fixture(autouse=True)
 async def _dispose_engine() -> AsyncIterator[None]:
     """Dispose pooled connections after every test.
 

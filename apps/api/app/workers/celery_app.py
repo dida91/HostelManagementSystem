@@ -17,7 +17,7 @@ celery_app = Celery(
     "hostel",
     broker=settings.celery_broker_url,
     backend=settings.celery_result_backend,
-    include=["app.workers.tasks.ai_tasks"],
+    include=["app.workers.tasks.ai_tasks", "app.workers.tasks.document_tasks"],
 )
 
 celery_app.conf.update(
