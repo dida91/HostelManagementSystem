@@ -31,6 +31,9 @@ class AISettings(BaseSettings):
         default="gemini-embedding-001", alias="GEMINI_EMBEDDING_MODEL"
     )
     gemini_embedding_dim: int = Field(default=768, alias="GEMINI_EMBEDDING_DIM")
+    # Embeddings are free on the Gemini API free tier. Set false only if this
+    # deployment is on a paid key, so cost reporting reflects reality.
+    gemini_embedding_free_tier: bool = Field(default=True, alias="GEMINI_EMBEDDING_FREE_TIER")
     gemini_timeout_seconds: float = Field(default=30.0, alias="GEMINI_TIMEOUT_SECONDS")
     gemini_max_retries: int = Field(default=3, alias="GEMINI_MAX_RETRIES")
     gemini_max_tool_iterations: int = Field(default=5, alias="GEMINI_MAX_TOOL_ITERATIONS")
@@ -41,11 +44,12 @@ class AISettings(BaseSettings):
     @field_validator("gemini_embedding_dim")
     @classmethod
     def _valid_dim(cls, v: int) -> int:
-        # gemini-embedding-001 supports Matryoshka truncation to these sizes.
-        if v not in (128, 256, 512, 768, 1536, 3072):
+        # Gemini embedding models support Matryoshka truncation anywhere in
+        # 128..3072; 768, 1536 and 3072 are the recommended values.
+        if not 128 <= v <= 3072:
             raise ValueError(
-                f"GEMINI_EMBEDDING_DIM={v} is not a supported output dimensionality "
-                "(expected one of 128, 256, 512, 768, 1536, 3072)"
+                f"GEMINI_EMBEDDING_DIM={v} is out of range "
+                "(supported output dimensionality is 128 to 3072)"
             )
         return v
 

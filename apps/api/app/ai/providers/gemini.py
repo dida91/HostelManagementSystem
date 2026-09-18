@@ -353,6 +353,20 @@ class GeminiEmbeddingProvider(_GeminiBase):
     # keep a single transient failure from invalidating a large unit of work.
     BATCH_SIZE = 32
 
+    # Per-model input token ceilings. Exceeding these is a hard API error, so we
+    # catch it here with a clear message instead of a generic 400 mid-ingestion.
+    INPUT_TOKEN_LIMITS = {
+        "gemini-embedding-001": 2048,
+        "gemini-embedding-2": 8192,
+    }
+
+    @property
+    def input_token_limit(self) -> int:
+        for prefix, limit in self.INPUT_TOKEN_LIMITS.items():
+            if self.model_name.startswith(prefix):
+                return limit
+        return 2048  # safest assumption for an unrecognised model
+
     @property
     def model_name(self) -> str:
         return self._settings.gemini_embedding_model
@@ -400,6 +414,25 @@ class GeminiEmbeddingProvider(_GeminiBase):
                     )
                 )
         return out
+
+    def _check_input_lengths(self, texts: list[str]) -> None:
+        """Reject over-long inputs before spending an API call.
+
+        Uses the same script-aware estimate as the chunker, so Devanagari text is
+        not silently assumed to be 4 chars/token.
+        """
+        from app.ai.services.chunking import _approx_tokens
+
+        limit = self.input_token_limit
+        for i, text in enumerate(texts):
+            estimated = _approx_tokens(text)
+            if estimated > limit:
+                raise GeminiError(
+                    f"Input {i} is approximately {estimated} tokens, over the "
+                    f"{limit}-token limit for {self.model_name}. Reduce the chunk size.",
+                    AIErrorCategory.BAD_REQUEST,
+                    retryable=False,
+                )
 
     async def embed_documents(self, texts: list[str]) -> list[Embedding]:
         if not texts:

@@ -24,19 +24,29 @@ from app.models.enums import AIErrorCategory, AIOperationStatus
 
 log = get_logger("ai.telemetry")
 
-# USD per 1M tokens. Approximate, configurable, and used only for internal cost
-# reporting -- never surfaced as a billing figure.
+# USD per 1M (input, output) tokens for the PAID tier. Approximate, used only
+# for internal cost reporting -- never surfaced as a billing figure.
+#
+# Embeddings are free on the Gemini API free tier. When
+# GEMINI_EMBEDDING_FREE_TIER is true (the default) embedding cost is reported as
+# zero, so the dashboard does not show spend that is not actually being charged.
 _PRICING: dict[str, tuple[float, float]] = {
     "gemini-2.5-pro": (1.25, 10.00),
     "gemini-2.5-flash": (0.30, 2.50),
     "gemini-2.0-flash": (0.10, 0.40),
     "gemini-embedding-001": (0.15, 0.0),
+    "gemini-embedding-2": (0.20, 0.0),
 }
+
+_EMBEDDING_PREFIXES = ("gemini-embedding-", "text-embedding-")
 
 
 def estimate_cost_usd(
     model: str, input_tokens: int | None, output_tokens: int | None
 ) -> Decimal | None:
+    if model.startswith(_EMBEDDING_PREFIXES) and get_settings().ai.gemini_embedding_free_tier:
+        return Decimal("0.000000")
+
     key = next((k for k in _PRICING if model.startswith(k)), None)
     if key is None or (input_tokens is None and output_tokens is None):
         return None

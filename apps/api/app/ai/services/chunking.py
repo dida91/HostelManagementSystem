@@ -11,9 +11,13 @@ import hashlib
 import re
 from dataclasses import dataclass
 
-# Roughly 4 characters per token for mixed English/Devanagari text. Deliberately
-# approximate: exact counts come from the provider when we need them.
+# Characters per token, by script. Latin text averages ~4 chars/token; Devanagari
+# tokenizes far less efficiently (~1.5-2 chars/token), so a chunk sized with the
+# Latin ratio can be 2-3x its assumed token count in Nepali. Underestimating here
+# pushes chunks past the embedding model's input limit, so the Devanagari ratio is
+# deliberately conservative.
 CHARS_PER_TOKEN = 4
+DEVANAGARI_CHARS_PER_TOKEN = 1.5
 DEFAULT_CHUNK_TOKENS = 600
 DEFAULT_OVERLAP_RATIO = 0.15
 
@@ -46,8 +50,18 @@ def _hash(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def _devanagari_ratio(text: str) -> float:
+    if not text:
+        return 0.0
+    devanagari = sum(1 for ch in text if "\u0900" <= ch <= "\u097f")
+    return devanagari / len(text)
+
+
 def _approx_tokens(text: str) -> int:
-    return max(1, len(text) // CHARS_PER_TOKEN)
+    """Estimate tokens, weighting by how much of the text is Devanagari."""
+    ratio = _devanagari_ratio(text)
+    chars_per_token = ratio * DEVANAGARI_CHARS_PER_TOKEN + (1 - ratio) * CHARS_PER_TOKEN
+    return max(1, int(len(text) / chars_per_token))
 
 
 def _is_heading(para: str) -> bool:
@@ -71,7 +85,11 @@ def chunk_text(
     if not text.strip():
         return []
 
-    max_chars = max_tokens * CHARS_PER_TOKEN
+    # Size the character window using the script actually present, so a Nepali
+    # page yields chunks that really are ~max_tokens rather than 2-3x that.
+    ratio = _devanagari_ratio(text)
+    chars_per_token = ratio * DEVANAGARI_CHARS_PER_TOKEN + (1 - ratio) * CHARS_PER_TOKEN
+    max_chars = int(max_tokens * chars_per_token)
     overlap_chars = int(max_chars * overlap_ratio)
 
     chunks: list[Chunk] = []

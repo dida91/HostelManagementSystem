@@ -44,3 +44,28 @@ def test_devanagari_headings_recognised() -> None:
     doc = "दफा ३\n\nखाना बिहान ७ बजे उपलब्ध हुनेछ।"
     chunks = chunk_text(doc)
     assert chunks[0].section_path == "दफा ३"
+
+
+def test_devanagari_tokens_are_not_underestimated() -> None:
+    """Nepali tokenizes ~2x less efficiently than Latin text.
+
+    Assuming 4 chars/token for Devanagari sized chunks at roughly double their
+    real token count, which risks breaching the embedding model's input limit.
+    """
+    nepali = "खाना बिहान सात बजे देखि नौ बजे सम्म उपलब्ध हुनेछ। " * 20
+    english = "Dinner is served between seven and nine in the evening. " * 20
+
+    from app.ai.services.chunking import _approx_tokens
+
+    ne_density = _approx_tokens(nepali) / len(nepali)
+    en_density = _approx_tokens(english) / len(english)
+    assert ne_density > en_density * 1.8
+
+
+def test_chunks_stay_within_the_embedding_input_limit() -> None:
+    from app.ai.providers.gemini import GeminiEmbeddingProvider
+
+    limit = GeminiEmbeddingProvider.INPUT_TOKEN_LIMITS["gemini-embedding-001"]
+    nepali = "यो छात्रावासको नियम हो। विद्यार्थीले समयमा फर्कनुपर्छ। " * 200
+    for chunk in chunk_text(nepali, max_tokens=600):
+        assert chunk.token_count <= limit
