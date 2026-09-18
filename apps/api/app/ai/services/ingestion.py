@@ -10,7 +10,7 @@ from __future__ import annotations
 import io
 import uuid
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.providers.base import DocumentUnderstandingProvider
@@ -113,7 +113,7 @@ class IngestionService:
                 await session.flush()
 
             chunk_index = 0
-            chunk_ids: list[uuid.UUID] = []
+            rows: list[DocumentChunk] = []
             for page_number, text in pages:
                 for chunk in chunk_text(
                     text,
@@ -134,16 +134,34 @@ class IngestionService:
                         },
                     )
                     session.add(row)
-                    chunk_ids.append(row.id)
+                    rows.append(row)
                     chunk_index = chunk.index + 1
-            await session.flush()
 
-            if not chunk_ids:
+            if not rows:
                 raise ValueError("No readable text was extracted from this document.")
 
-            await self._embeddings.embed_chunks(
+            # Flush BEFORE reading ids: DocumentChunk.id comes from a Python-side
+            # column default applied at INSERT, so row.id is None until now.
+            # Collecting ids earlier yields [None, ...] and the embedding step
+            # silently matches no rows.
+            await session.flush()
+            chunk_ids = [row.id for row in rows]
+
+            embedded = await self._embeddings.embed_chunks(
                 session=session, chunk_ids=chunk_ids, user_id=user_id
             )
+
+            # A document with chunks but no vectors is invisible to retrieval.
+            # Fail loudly rather than marking it INDEXED with an empty index.
+            total_vectors = (
+                await session.execute(
+                    select(func.count(ChunkEmbedding.id)).where(
+                        ChunkEmbedding.chunk_id.in_(chunk_ids)
+                    )
+                )
+            ).scalar_one()
+            if not total_vectors:
+                raise ValueError(f"Indexing produced {len(chunk_ids)} chunks but no embeddings.")
 
             document.status = DocumentStatus.INDEXED
             await session.flush()
@@ -151,6 +169,8 @@ class IngestionService:
                 "document_indexed",
                 document_id=str(document.id),
                 chunks=len(chunk_ids),
+                embedded=embedded,
+                vectors=int(total_vectors),
                 pages=document.page_count,
             )
             return len(chunk_ids)

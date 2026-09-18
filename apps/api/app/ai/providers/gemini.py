@@ -16,7 +16,7 @@ import json
 import math
 import random
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Any, cast
 
 from google import genai  # noqa: TID251 -- this module is the designated boundary
 from google.genai import types  # noqa: TID251
@@ -306,8 +306,11 @@ class GeminiProvider(_GeminiBase):
         response, _ = await self._with_retry(_call, operation="generate_with_tools")
 
         calls: list[ToolCall] = []
+        raw_content: Any = None
         for candidate in getattr(response, "candidates", None) or []:
             content = getattr(candidate, "content", None)
+            if content is not None and raw_content is None:
+                raw_content = content
             for part in getattr(content, "parts", None) or []:
                 fc = getattr(part, "function_call", None)
                 if fc is not None:
@@ -321,13 +324,24 @@ class GeminiProvider(_GeminiBase):
                 text = None
 
         return ToolTurnResult(
-            text=text, tool_calls=calls, model=target, usage=self._usage(response)
+            text=text,
+            tool_calls=calls,
+            model=target,
+            usage=self._usage(response),
+            raw_content=raw_content,
         )
 
     @staticmethod
     def _to_content(message: dict[str, Any]) -> types.Content:
         """Translate our neutral message dicts into SDK Content objects."""
         role = message.get("role", "user")
+        if role == "assistant_raw":
+            # Replayed verbatim so thought signatures on function-call parts
+            # survive the round trip; rebuilding the call would strip them and
+            # the API rejects the turn.
+            raw = message.get("raw")
+            if raw is not None:
+                return cast(types.Content, raw)
         if role == "tool":
             return types.Content(
                 role="user",

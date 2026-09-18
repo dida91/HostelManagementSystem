@@ -114,7 +114,12 @@ async def test_complaint_submission_works_while_ai_is_unavailable(client: AsyncC
     assert r.status_code == 201
 
 
-async def test_ai_endpoints_degrade_without_leaking_internals(client: AsyncClient) -> None:
+async def test_ai_endpoints_degrade_without_leaking_internals(
+    client: AsyncClient, ai_unavailable: None
+) -> None:
+    """Degradation is forced rather than inferred from a missing key, so this
+    contract is verified identically in CI and on a developer machine that has
+    a key configured."""
     sita = await _login(client, "sita@kutumba.local", "StudentPass123!")
     r = await client.post(
         "/api/v1/assistant/ask",

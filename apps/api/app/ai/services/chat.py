@@ -93,6 +93,12 @@ class AssistantService:
                     final_text = turn.text or ""
                     break
 
+                # Append the model's own turn verbatim, before any tool results.
+                # Rebuilding the function call from its name and arguments drops
+                # the provider's reasoning signature and the API rejects the
+                # follow-up request.
+                conversation.append({"role": "assistant_raw", "raw": turn.raw_content})
+
                 for call in turn.tool_calls:
                     span.tool_calls += 1
                     result = await registry.execute(
@@ -103,13 +109,6 @@ class AssistantService:
                             "name": call.name,
                             "arguments": call.arguments,
                             "ok": "error" not in result,
-                        }
-                    )
-                    conversation.append(
-                        {
-                            "role": "assistant_tool_call",
-                            "name": call.name,
-                            "arguments": call.arguments,
                         }
                     )
                     conversation.append({"role": "tool", "name": call.name, "response": result})

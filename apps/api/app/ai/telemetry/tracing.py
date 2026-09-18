@@ -30,6 +30,8 @@ log = get_logger("ai.telemetry")
 # Embeddings are free on the Gemini API free tier. When
 # GEMINI_EMBEDDING_FREE_TIER is true (the default) embedding cost is reported as
 # zero, so the dashboard does not show spend that is not actually being charged.
+# Unknown models return None rather than a guessed figure: a wrong cost is worse
+# than an absent one. Update these when a model's published price is confirmed.
 _PRICING: dict[str, tuple[float, float]] = {
     "gemini-2.5-pro": (1.25, 10.00),
     "gemini-2.5-flash": (0.30, 2.50),

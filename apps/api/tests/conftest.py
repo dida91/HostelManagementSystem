@@ -4,6 +4,7 @@ import os
 import uuid
 from collections.abc import AsyncIterator
 
+import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +16,21 @@ from app.core.security import hash_password  # noqa: E402
 from app.main import create_app  # noqa: E402
 from app.models.enums import UserRole  # noqa: E402
 from app.models.user import Student, User  # noqa: E402
+
+
+@pytest.fixture
+def ai_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Force the AI provider to report itself unconfigured.
+
+    Without this, the degradation tests would pass only on machines with no
+    GEMINI_API_KEY and would start making real API calls on machines that have
+    one.
+    """
+    for module in (
+        "app.api.v1.assistant",
+        "app.api.v1.analytics",
+    ):
+        monkeypatch.setattr(f"{module}.ai_is_available", lambda: False)
 
 
 @pytest_asyncio.fixture(autouse=True)

@@ -65,6 +65,11 @@ class ToolTurnResult:
     tool_calls: list[ToolCall]
     model: str
     usage: TokenUsage = field(default_factory=TokenUsage)
+    # The provider's own representation of this turn, kept opaque here. It must
+    # be appended to history verbatim: reconstructing a function call from its
+    # name and arguments drops provider-internal reasoning signatures, which
+    # newer models reject.
+    raw_content: Any = None
 
     @property
     def wants_tools(self) -> bool:

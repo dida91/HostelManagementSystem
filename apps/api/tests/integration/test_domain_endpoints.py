@@ -245,7 +245,7 @@ async def test_analytics_figures_come_from_the_database(client: AsyncClient) -> 
     assert body["fees"]["currency"] == "NPR"
 
 
-async def test_ai_insights_degrade_without_a_key(client: AsyncClient) -> None:
+async def test_ai_insights_degrade_without_a_key(client: AsyncClient, ai_unavailable: None) -> None:
     """The computed metrics must not be lost just because narration is down."""
     r = await client.post(
         "/api/v1/analytics/insights", headers=_h(await _warden(client)), json={"days": 30}
