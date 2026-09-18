@@ -1,0 +1,6 @@
+{"id":"r001","question":"What time is dinner served?","gold_section":"Mess Timings","must_be_grounded":true}
+{"id":"r002","question":"How many days in advance do I need to apply for leave?","gold_section":"Leave Policy","must_be_grounded":true}
+{"id":"r003","question":"What is the entry deadline on weekdays?","gold_section":"Entry and Exit Timings","must_be_grounded":true}
+{"id":"r004","question":"Is guardian consent required for a home visit?","gold_section":"Leave Policy","must_be_grounded":true}
+{"id":"r005","question":"What is the hostel's policy on keeping pets?","gold_section":null,"must_be_grounded":false}
+{"id":"r006","question":"खाना कति बजे पाइन्छ?","gold_section":"Mess Timings","must_be_grounded":true}

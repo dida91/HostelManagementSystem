@@ -1,0 +1,8 @@
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  reactStrictMode: true,
+  // The Gemini key lives only in the FastAPI process. Nothing here may expose it:
+  // the browser never talks to Gemini, and never holds an API token.
+  env: {},
+};
+export default nextConfig;

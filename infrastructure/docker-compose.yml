@@ -1,0 +1,33 @@
+name: hostel
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: hostel_db
+    environment:
+      POSTGRES_USER: hostel
+      POSTGRES_PASSWORD: hostel
+      POSTGRES_DB: hostel
+    ports:
+      - "5434:5432"   # 5432 = host PG, 5433 = film_finance_db
+    volumes:
+      - hostel_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hostel -d hostel"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    container_name: hostel_redis
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  hostel_pgdata:
