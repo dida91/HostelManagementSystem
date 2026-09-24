@@ -19,6 +19,7 @@ from app.core.logging import get_logger, request_id_ctx
 from app.models.complaint import Complaint, ComplaintAIAnalysis, ComplaintEvent
 from app.models.enums import AIOperationStatus, ComplaintStatus, UserRole
 from app.models.user import AuditLog, User
+from app.services.notifications import NotificationService, complaint_updated_message
 
 log = get_logger("services.complaints")
 
@@ -119,6 +120,14 @@ class ComplaintService:
                     to_status=complaint.status,
                     note=note,
                 )
+            )
+            # The staff note stays internal; the resident hears only the new status.
+            await NotificationService(self._session).notify_student(
+                complaint.student_id,
+                complaint_updated_message(
+                    status=complaint.status,
+                    excerpt_source=complaint.summary or complaint.raw_text,
+                ),
             )
 
         after = {

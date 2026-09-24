@@ -26,6 +26,7 @@ from app.models.hostel import Bed, BedAssignment, Block, Room
 from app.models.leave import LeaveRequest
 from app.models.mess import Announcement, MessMenu
 from app.models.user import Student, User
+from app.services.announcements import visible_audiences
 
 ALL_ROLES = {UserRole.STUDENT, UserRole.STAFF, UserRole.WARDEN, UserRole.SUPER_ADMIN}
 STAFF_ROLES = {UserRole.STAFF, UserRole.WARDEN, UserRole.SUPER_ADMIN}
@@ -276,6 +277,9 @@ async def search_announcements(ctx: ToolContext, args: dict[str, Any]) -> dict[s
     stmt = select(Announcement).where(
         Announcement.publish_at <= now,
         (Announcement.expires_at.is_(None)) | (Announcement.expires_at >= now),
+        # Same audience rule as the announcements API: the assistant must not
+        # become a way for students to read staff-only notices.
+        Announcement.audience.in_(visible_audiences(ctx.principal.role)),
     )
     if q := args.get("query"):
         stmt = stmt.where(Announcement.title.ilike(f"%{q}%") | Announcement.body.ilike(f"%{q}%"))

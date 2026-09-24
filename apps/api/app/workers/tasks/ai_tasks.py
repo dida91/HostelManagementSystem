@@ -6,7 +6,6 @@ blocks a student from filing a complaint.
 
 from __future__ import annotations
 
-import asyncio
 import uuid
 
 from app.ai.providers.registry import ai_is_available, get_llm_provider
@@ -15,6 +14,7 @@ from app.core.db import AsyncSessionLocal
 from app.core.logging import get_logger
 from app.models.complaint import Complaint
 from app.workers.celery_app import celery_app
+from app.workers.runtime import run_async
 
 log = get_logger("workers.ai")
 
@@ -53,7 +53,7 @@ def analyse_complaint_task(self, complaint_id: str) -> str:  # type: ignore[no-u
         return "skipped_ai_unavailable"
 
     log.info("analysing_complaint", complaint_id=complaint_id)
-    return asyncio.run(_analyse(uuid.UUID(complaint_id)))
+    return run_async(_analyse(uuid.UUID(complaint_id)))
 
 
 @celery_app.task(
@@ -88,4 +88,4 @@ def analyse_mess_feedback_task(self, feedback_id: str) -> str:  # type: ignore[n
             await session.commit()
             return record.status.value
 
-    return asyncio.run(_run())
+    return run_async(_run())

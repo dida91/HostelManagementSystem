@@ -24,6 +24,7 @@ from sqlalchemy import (
     String,
     Text,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -72,6 +73,8 @@ class FeeInvoice(UUIDPrimaryKey, Timestamps, Base):
         Enum(InvoiceStatus, name="invoice_status"), default=InvoiceStatus.DRAFT, nullable=False
     )
     note: Mapped[str | None] = mapped_column(Text)
+    # "YYYY-MM" on invoices produced by monthly billing; NULL on manual ones.
+    billing_period: Mapped[str | None] = mapped_column(String(7))
 
     line_items: Mapped[list[InvoiceLineItem]] = relationship(
         back_populates="invoice", cascade="all, delete-orphan"
@@ -79,8 +82,22 @@ class FeeInvoice(UUIDPrimaryKey, Timestamps, Base):
 
     __table_args__ = (
         CheckConstraint("period_end >= period_start", name="ck_invoice_period_order"),
+        CheckConstraint(
+            "billing_period IS NULL OR billing_period ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'",
+            name="ck_invoice_billing_period_format",
+        ),
         Index("ix_invoices_student_status", "student_id", "status"),
         Index("ix_invoices_due", "due_date"),
+        # One monthly-billing invoice per student per month, enforced by the
+        # database: re-running the generator, or running it twice at once,
+        # cannot bill anyone twice.
+        Index(
+            "uq_invoice_billing_period_per_student",
+            "student_id",
+            "billing_period",
+            unique=True,
+            postgresql_where=text("billing_period IS NOT NULL AND status <> 'VOID'"),
+        ),
     )
 
 

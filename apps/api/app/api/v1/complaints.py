@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from app.api.deps import CurrentUser, SessionDep, require_roles
 from app.core.errors import PermissionDeniedError
 from app.models.complaint import Complaint
-from app.models.enums import UserRole
+from app.models.enums import ComplaintStatus, UserRole
 from app.models.user import Student
 from app.schemas.common import Page
 from app.schemas.complaint import (
@@ -18,6 +18,7 @@ from app.schemas.complaint import (
     ComplaintOverride,
 )
 from app.services.complaints import ComplaintService
+from app.workers.enqueue import enqueue_after_commit
 
 router = APIRouter(prefix="/complaints", tags=["complaints"])
 
@@ -45,16 +46,10 @@ async def create_complaint(
 
     complaint = await ComplaintService(session).create(student_id=student_id, text=payload.text)
 
-    from app.workers.tasks.ai_tasks import analyse_complaint_task
-
-    # Dispatched after commit by the router's session teardown; if the broker is
-    # unreachable the complaint is still safely stored.
-    try:
-        analyse_complaint_task.delay(str(complaint.id))
-    except Exception:  # noqa: BLE001 - queueing must not fail the submission
-        from app.core.logging import get_logger
-
-        get_logger("api.complaints").error("ai_task_enqueue_failed", complaint_id=str(complaint.id))
+    # Dispatched only after the request's transaction commits, so the worker is
+    # guaranteed to find the row. If the broker is unreachable the complaint is
+    # still safely stored.
+    enqueue_after_commit(session, "ai.analyse_complaint", str(complaint.id))
     return complaint
 
 
@@ -62,11 +57,16 @@ async def create_complaint(
 async def list_complaints(
     user: CurrentUser,
     session: SessionDep,
+    status_filter: list[ComplaintStatus] | None = Query(default=None, alias="status"),
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
 ) -> Page[ComplaintOut]:
+    """Newest first. `status` may repeat (e.g. the open ones for triage)."""
     stmt = select(Complaint)
     count_stmt = select(func.count(Complaint.id))
+    if status_filter:
+        stmt = stmt.where(Complaint.status.in_(status_filter))
+        count_stmt = count_stmt.where(Complaint.status.in_(status_filter))
 
     # Students are scoped to their own rows at the query level.
     if user.role is UserRole.STUDENT:

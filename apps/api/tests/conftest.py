@@ -10,6 +10,31 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 os.environ.setdefault("AI_REQUIRED", "false")
+# Tests never publish to the real broker: a task queued there would be picked up
+# by a developer's running worker and executed against real services (and a
+# real Gemini quota) long after the test finished.
+os.environ["CELERY_BROKER_URL"] = "memory://"
+os.environ["CELERY_RESULT_BACKEND"] = "cache+memory://"
+# Outbound email/SMS stay off unless a test switches them on explicitly.
+os.environ["SMTP_HOST"] = ""
+os.environ["SMS_PROVIDER"] = "none"
+
+from sqlalchemy.engine import make_url  # noqa: E402
+
+from app.core.config import Settings  # noqa: E402
+
+# Integration tests run against their own database, rebuilt from migrations and
+# the seed at the start of every run (tests/integration/conftest.py), so they
+# neither depend on nor pollute the development data.
+TEST_DATABASE = "hostel_test"
+_configured = Settings()
+for _var, _url in (
+    ("DATABASE_URL", _configured.database_url),
+    ("DATABASE_URL_SYNC", _configured.database_url_sync),
+):
+    os.environ[_var] = (
+        make_url(_url).set(database=TEST_DATABASE).render_as_string(hide_password=False)
+    )
 
 from app.core.db import AsyncSessionLocal, async_engine  # noqa: E402
 from app.core.security import hash_password  # noqa: E402

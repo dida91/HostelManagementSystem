@@ -18,7 +18,9 @@ async function proxy(req: NextRequest, path: string[]): Promise<NextResponse> {
     if (!HOP_BY_HOP.has(key.toLowerCase())) headers.set(key, value);
   });
 
-  const body = ["GET", "HEAD"].includes(req.method) ? undefined : await req.text();
+  // Raw bytes, never text: decoding a multipart body as UTF-8 corrupts binary
+  // uploads such as PDFs.
+  const body = ["GET", "HEAD"].includes(req.method) ? undefined : await req.arrayBuffer();
 
   let upstream: Response;
   try {
@@ -36,7 +38,10 @@ async function proxy(req: NextRequest, path: string[]): Promise<NextResponse> {
     );
   }
 
-  const res = new NextResponse(await upstream.arrayBuffer(), { status: upstream.status });
+  // A 204, 205 or 304 must have no body at all: even an empty buffer makes the
+  // Response constructor throw, turning a successful DELETE into a 500.
+  const empty = req.method === "HEAD" || [204, 205, 304].includes(upstream.status);
+  const res = new NextResponse(empty ? null : await upstream.arrayBuffer(), { status: upstream.status });
   upstream.headers.forEach((value, key) => {
     const k = key.toLowerCase();
     if (HOP_BY_HOP.has(k) || k === "content-encoding" || k === "content-length") return;

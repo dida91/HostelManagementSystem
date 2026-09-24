@@ -19,6 +19,7 @@ from app.models.finance import (
 from app.models.hostel import Bed, BedAssignment, Block, Room
 from app.models.leave import LeaveDocument, LeaveRequest
 from app.models.mess import Announcement, MessFeedback, MessFeedbackAI, MessMenu
+from app.models.notification import Notification, NotificationDelivery
 from app.models.user import AuditLog, RefreshToken, Student, User
 
 __all__ = [
@@ -47,6 +48,8 @@ __all__ = [
     "MessFeedback",
     "MessFeedbackAI",
     "MessMenu",
+    "Notification",
+    "NotificationDelivery",
     "AuditLog",
     "RefreshToken",
     "Student",

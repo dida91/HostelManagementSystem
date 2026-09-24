@@ -13,6 +13,7 @@ from app.core.db import AsyncSessionLocal
 from app.core.logging import get_logger
 from app.models.document import Document
 from app.workers.celery_app import celery_app
+from app.workers.runtime import run_async
 
 log = get_logger("workers.documents")
 
@@ -56,4 +57,4 @@ def ingest_document_task(self, document_id: str) -> str:  # type: ignore[no-unty
         return "skipped_ai_unavailable"
 
     log.info("ingesting_document", document_id=document_id)
-    return asyncio.run(_ingest(uuid.UUID(document_id)))
+    return run_async(_ingest(uuid.UUID(document_id)))

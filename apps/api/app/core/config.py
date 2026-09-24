@@ -86,6 +86,60 @@ class AISettings(BaseSettings):
         return bool(self.gemini_api_key and self.gemini_api_key.get_secret_value().strip())
 
 
+class NotificationSettings(BaseSettings):
+    """Outbound email and SMS.
+
+    Each channel stays OFF until it is configured. An unconfigured channel is
+    simply not used -- in-app notifications still work -- and there is no fake
+    sender that would make an unconfigured deployment look like it is mailing
+    residents.
+    """
+
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    smtp_host: str | None = Field(default=None, alias="SMTP_HOST")
+    smtp_port: int = Field(default=587, alias="SMTP_PORT")
+    smtp_username: str | None = Field(default=None, alias="SMTP_USERNAME")
+    smtp_password: SecretStr | None = Field(default=None, alias="SMTP_PASSWORD")
+    smtp_security: Literal["starttls", "ssl", "none"] = Field(
+        default="starttls", alias="SMTP_SECURITY"
+    )
+    smtp_timeout_seconds: float = Field(default=15.0, alias="SMTP_TIMEOUT_SECONDS")
+    email_from: str = Field(default="Kutumba Hostel <no-reply@kutumba.local>", alias="EMAIL_FROM")
+
+    sms_provider: Literal["none", "sparrow"] = Field(default="none", alias="SMS_PROVIDER")
+    sparrow_sms_token: SecretStr | None = Field(default=None, alias="SPARROW_SMS_TOKEN")
+    sparrow_sms_from: str | None = Field(default=None, alias="SPARROW_SMS_FROM")
+    sparrow_sms_url: str = Field(
+        default="https://api.sparrowsms.com/v2/sms/", alias="SPARROW_SMS_URL"
+    )
+
+    @property
+    def email_enabled(self) -> bool:
+        return bool(self.smtp_host and self.smtp_host.strip())
+
+    @property
+    def sms_enabled(self) -> bool:
+        return (
+            self.sms_provider == "sparrow"
+            and self.sparrow_sms_token is not None
+            and bool(self.sparrow_sms_token.get_secret_value().strip())
+            and bool(self.sparrow_sms_from and self.sparrow_sms_from.strip())
+        )
+
+    def validate_for_startup(self, app_env: AppEnv) -> None:
+        if self.sms_provider == "sparrow" and not self.sms_enabled:
+            raise ConfigurationError(
+                "SMS_PROVIDER=sparrow, but SPARROW_SMS_TOKEN or SPARROW_SMS_FROM is missing.\n"
+                "  Fix: set both in apps/api/.env, or set SMS_PROVIDER=none."
+            )
+        if app_env == "production" and self.email_enabled and self.smtp_security == "none":
+            raise ConfigurationError(
+                "SMTP_SECURITY=none is not permitted in production "
+                "(credentials and resident data would cross the network unencrypted)."
+            )
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
@@ -116,7 +170,46 @@ class Settings(BaseSettings):
     storage_dir: str = Field(default="./storage", alias="STORAGE_DIR")
     max_upload_bytes: int = Field(default=20 * 1024 * 1024, alias="MAX_UPLOAD_BYTES")
 
+    # Used for links in outbound email; the browser-facing Next.js origin.
+    web_base_url: str = Field(default="http://localhost:3000", alias="WEB_BASE_URL")
+    # Calendar dates ("today", "due on the 10th") are the hostel's, not the server's.
+    hostel_timezone: str = Field(default="Asia/Kathmandu", alias="HOSTEL_TIMEZONE")
+
+    # --- Billing ---
+    invoice_due_day: int = Field(default=10, alias="INVOICE_DUE_DAY")
+    fee_reminder_days_before_due: int = Field(default=3, alias="FEE_REMINDER_DAYS_BEFORE_DUE")
+    auto_generate_monthly_invoices: bool = Field(
+        default=True, alias="AUTO_GENERATE_MONTHLY_INVOICES"
+    )
+
+    # --- Reports ---
+    # A Devanagari TTF so Nepali text prints correctly in PDF exports.
+    report_devanagari_font: str = Field(
+        default="/usr/share/fonts/truetype/noto/NotoSansDevanagari-Regular.ttf",
+        alias="REPORT_DEVANAGARI_FONT",
+    )
+
     ai: AISettings = Field(default_factory=AISettings)
+    notify: NotificationSettings = Field(default_factory=NotificationSettings)
+
+    @field_validator("invoice_due_day")
+    @classmethod
+    def _valid_due_day(cls, v: int) -> int:
+        # Capped at 28 so every month, including February, has that day.
+        if not 1 <= v <= 28:
+            raise ValueError("INVOICE_DUE_DAY must be between 1 and 28")
+        return v
+
+    @field_validator("hostel_timezone")
+    @classmethod
+    def _valid_timezone(cls, v: str) -> str:
+        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+        try:
+            ZoneInfo(v)
+        except (ZoneInfoNotFoundError, ValueError) as exc:
+            raise ValueError(f"HOSTEL_TIMEZONE={v!r} is not a known IANA timezone") from exc
+        return v
 
     @property
     def cors_origin_list(self) -> list[str]:
@@ -129,6 +222,7 @@ class Settings(BaseSettings):
             if self.app_debug:
                 raise ConfigurationError("APP_DEBUG must be false in production.")
         self.ai.validate_for_startup(self.app_env)
+        self.notify.validate_for_startup(self.app_env)
 
     def __repr__(self) -> str:  # pragma: no cover - defensive, avoids secret leakage
         return f"<Settings app_env={self.app_env} (secrets redacted)>"

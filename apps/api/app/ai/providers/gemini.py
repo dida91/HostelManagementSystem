@@ -296,7 +296,7 @@ class GeminiProvider(_GeminiBase):
             tools=[types.Tool(function_declarations=declarations)] if declarations else None,
             automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
         )
-        contents = [self._to_content(m) for m in history]
+        contents: list[types.ContentUnion] = [self._to_content(m) for m in history]
 
         async def _call() -> Any:
             return await self._client.aio.models.generate_content(
@@ -383,13 +383,15 @@ class GeminiProvider(_GeminiBase):
         if hint:
             instruction = f"{instruction}\n\nContext: {hint}"
 
+        parts: list[types.PartUnion] = [
+            types.Part.from_bytes(data=content, mime_type=mime_type),
+            types.Part.from_text(text=instruction),
+        ]
+
         async def _call() -> Any:
             return await self._client.aio.models.generate_content(
                 model=target,
-                contents=[
-                    types.Part.from_bytes(data=content, mime_type=mime_type),
-                    types.Part.from_text(text=instruction),
-                ],
+                contents=parts,
                 config=types.GenerateContentConfig(temperature=0.0),
             )
 
@@ -458,7 +460,7 @@ class GeminiEmbeddingProvider(_GeminiBase):
         for start in range(0, len(texts), self.BATCH_SIZE):
             batch = texts[start : start + self.BATCH_SIZE]
 
-            async def _call(b: list[str] = batch) -> Any:
+            async def _call(b: list[types.PartUnion] = [*batch]) -> Any:  # noqa: B006
                 return await self._client.aio.models.embed_content(
                     model=self.model_name, contents=b, config=cfg
                 )

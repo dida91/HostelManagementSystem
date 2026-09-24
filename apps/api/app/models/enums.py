@@ -189,3 +189,28 @@ class MessageRole(str, enum.Enum):
     ASSISTANT = "ASSISTANT"
     TOOL = "TOOL"
     SYSTEM = "SYSTEM"
+
+
+class NotificationCategory(str, enum.Enum):
+    ANNOUNCEMENT = "ANNOUNCEMENT"
+    LEAVE_REQUESTED = "LEAVE_REQUESTED"
+    LEAVE_DECIDED = "LEAVE_DECIDED"
+    COMPLAINT_UPDATED = "COMPLAINT_UPDATED"
+    INVOICE_ISSUED = "INVOICE_ISSUED"
+    FEE_REMINDER = "FEE_REMINDER"
+    FEE_OVERDUE = "FEE_OVERDUE"
+    PAYMENT_RECEIVED = "PAYMENT_RECEIVED"
+    ROOM_ALLOCATED = "ROOM_ALLOCATED"
+    ACCOUNT_SECURITY = "ACCOUNT_SECURITY"
+
+
+class NotificationChannel(str, enum.Enum):
+    EMAIL = "EMAIL"
+    SMS = "SMS"
+
+
+class DeliveryStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    SENDING = "SENDING"
+    SENT = "SENT"
+    FAILED = "FAILED"

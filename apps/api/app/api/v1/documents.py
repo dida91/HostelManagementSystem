@@ -17,6 +17,7 @@ from app.models.enums import DocumentStatus, DocumentType, UserRole
 from app.schemas.common import Page
 from app.schemas.document import DocumentOut, ReindexResult
 from app.services.documents import DocumentService
+from app.workers.enqueue import enqueue_after_commit
 
 router = APIRouter(
     prefix="/documents",
@@ -46,14 +47,9 @@ async def upload_document(
         uploaded_by_user_id=user.id,
     )
 
-    from app.workers.tasks.document_tasks import ingest_document_task
-
-    try:
-        ingest_document_task.delay(str(document.id))
-    except Exception:  # noqa: BLE001 - the file is stored; indexing can be retried
-        from app.core.logging import get_logger
-
-        get_logger("api.documents").error("ingestion_enqueue_failed", document_id=str(document.id))
+    # Queued after commit; if the broker is down the file is stored and can be
+    # reindexed later.
+    enqueue_after_commit(session, "ai.ingest_document", str(document.id))
     return document
 
 
@@ -100,11 +96,9 @@ async def reindex_document(document_id: uuid.UUID, session: SessionDep) -> Reind
     if document is None:
         raise NotFoundError("Document not found.")
 
-    from app.workers.tasks.document_tasks import ingest_document_task
-
     document.status = DocumentStatus.UPLOADED
     await session.flush()
-    ingest_document_task.delay(str(document.id))
+    enqueue_after_commit(session, "ai.ingest_document", str(document.id))
     return ReindexResult(document_id=document.id, queued=True)
 
 

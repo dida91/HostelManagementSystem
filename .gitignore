@@ -27,6 +27,7 @@ out/
 *.tsbuildinfo
 
 # --- Local data ---
+celerybeat-schedule*
 storage/
 !storage/.gitkeep
 *.sqlite3

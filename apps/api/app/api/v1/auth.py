@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Request, Response, status
 from app.api.deps import CurrentUser, SessionDep, rate_limit
 from app.core.config import get_settings
 from app.core.errors import AuthenticationError
-from app.schemas.common import LoginRequest, MeOut, TokenResponse
+from app.schemas.common import LoginRequest, MeOut, PasswordChange, TokenResponse
 from app.services.auth import AuthService
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -87,6 +87,32 @@ async def logout(request: Request, response: Response, session: SessionDep) -> N
         await AuthService(session).logout(refresh_token=token)
     response.delete_cookie(ACCESS_COOKIE, path="/")
     response.delete_cookie(REFRESH_COOKIE, path="/")
+
+
+@router.post(
+    "/change-password",
+    response_model=TokenResponse,
+    # Same throttle as login: this endpoint also verifies a password.
+    dependencies=[Depends(rate_limit("auth"))],
+)
+async def change_password(
+    payload: PasswordChange,
+    user: CurrentUser,
+    request: Request,
+    response: Response,
+    session: SessionDep,
+) -> TokenResponse:
+    """Change your own password. Every other session is signed out; this one
+    continues with a fresh token pair."""
+    access, refresh = await AuthService(session).change_password(
+        user=user,
+        current_password=payload.current_password,
+        new_password=payload.new_password,
+        user_agent=request.headers.get("user-agent"),
+        ip=request.client.host if request.client else None,
+    )
+    _set_session_cookies(response, access, refresh)
+    return TokenResponse(access_token=access, refresh_token=refresh)
 
 
 @router.get("/me", response_model=MeOut)

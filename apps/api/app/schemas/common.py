@@ -30,6 +30,11 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
 
 
+class PasswordChange(BaseModel):
+    current_password: str = Field(min_length=1, max_length=128)
+    new_password: str = Field(min_length=10, max_length=128)
+
+
 class UserOut(ORMModel):
     id: uuid.UUID
     email: str

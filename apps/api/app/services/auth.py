@@ -5,10 +5,10 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import AuthenticationError
+from app.core.errors import AuthenticationError, ValidationFailedError
 from app.core.logging import get_logger
 from app.core.security import (
     create_token,
@@ -19,6 +19,7 @@ from app.core.security import (
     verify_password,
 )
 from app.models.user import RefreshToken, Student, User
+from app.services.notifications import NotificationService, password_changed_message
 
 log = get_logger("auth")
 
@@ -135,6 +136,57 @@ class AuthService:
             .where(RefreshToken.token_hash == token_hash, RefreshToken.revoked_at.is_(None))
             .values(revoked_at=datetime.now(UTC))
         )
+
+    async def revoke_all_sessions(self, user_id: uuid.UUID) -> None:
+        """Sign a user out everywhere. Access tokens are short-lived and are
+        also refused as soon as the account is inactive."""
+        await self._session.execute(
+            update(RefreshToken)
+            .where(RefreshToken.user_id == user_id, RefreshToken.revoked_at.is_(None))
+            .values(revoked_at=datetime.now(UTC))
+        )
+
+    async def change_password(
+        self,
+        *,
+        user: User,
+        current_password: str,
+        new_password: str,
+        user_agent: str | None = None,
+        ip: str | None = None,
+    ) -> tuple[str, str]:
+        """Change one's own password.
+
+        Every other session is signed out; the caller gets a fresh token pair
+        so they stay signed in on this device.
+        """
+        if not verify_password(current_password, user.password_hash):
+            log.info("password_change_rejected", user_id=str(user.id))
+            raise ValidationFailedError("Your current password is incorrect.")
+        if verify_password(new_password, user.password_hash):
+            raise ValidationFailedError("The new password must differ from the current one.")
+
+        user.password_hash = hash_password(new_password)
+        await self.revoke_all_sessions(user.id)
+        access, refresh = await self._issue_pair(user, user_agent=user_agent, ip=ip)
+
+        await NotificationService(self._session).notify(
+            [user.id], password_changed_message(by_staff=False)
+        )
+        log.info("password_changed", user_id=str(user.id))
+        return access, refresh
+
+    async def purge_expired_refresh_tokens(self, *, now: datetime) -> int:
+        """Delete refresh tokens past their expiry.
+
+        Safe for reuse detection: an expired token is rejected when its JWT is
+        decoded (the row and the JWT share one expiry), before its row would
+        ever be looked up.
+        """
+        result = await self._session.execute(
+            delete(RefreshToken).where(RefreshToken.expires_at < now)
+        )
+        return int(result.rowcount or 0)  # type: ignore[attr-defined]
 
     async def student_id_for(self, user_id: uuid.UUID) -> uuid.UUID | None:
         return (

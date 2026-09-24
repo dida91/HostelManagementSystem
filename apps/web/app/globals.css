@@ -2,5 +2,200 @@
 @tailwind components;
 @tailwind utilities;
 
-:root { color-scheme: light; }
-body { @apply bg-slate-50 text-slate-900 antialiased; }
+/* "Phewa Dusk" — see DESIGN_SYSTEM.md. */
+
+:root {
+  color-scheme: dark;
+  --canvas: #0a1a20;
+  --hairline: rgba(237, 243, 242, 0.08);
+  --line: rgba(237, 243, 242, 0.14);
+  --line-strong: rgba(237, 243, 242, 0.22);
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@layer base {
+  html {
+    background: var(--canvas);
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-lake-950 font-sans text-body text-snow antialiased;
+    font-stretch: 100%;
+    min-height: 100dvh;
+  }
+
+  /* The canvas: the lake at dusk, lit faintly from the mountains (top right) and
+     the glacier (bottom left), with film grain. Fixed so it never scrolls or repaints. */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background-image:
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.035'/%3E%3C/svg%3E"),
+      radial-gradient(1100px 620px at 88% -12%, rgba(240, 138, 118, 0.1), transparent 62%),
+      radial-gradient(900px 640px at -12% 112%, rgba(127, 183, 219, 0.07), transparent 60%),
+      linear-gradient(180deg, #0c1e25 0%, #0a1a20 42%, #09171c 100%);
+  }
+
+  ::selection {
+    background: rgba(242, 181, 68, 0.35);
+    color: #edf3f2;
+  }
+
+  :focus-visible {
+    outline: 2px solid rgba(242, 181, 68, 0.75);
+    outline-offset: 2px;
+  }
+
+  /* color-scheme: dark already draws the picker icon light; just soften it. */
+  input[type="date"]::-webkit-calendar-picker-indicator,
+  input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+    opacity: 0.7;
+    cursor: pointer;
+  }
+  input[type="date"]::-webkit-calendar-picker-indicator:hover,
+  input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
+    opacity: 1;
+  }
+
+  /* Native scrollbars, tinted to the lake. */
+  * {
+    scrollbar-color: #2f5864 transparent;
+    scrollbar-width: thin;
+  }
+}
+
+@layer components {
+  /* --- type styles: width axis carries hierarchy (Anek wdth 75–125) --- */
+  .t-display {
+    @apply text-display;
+    font-stretch: 120%;
+  }
+  .t-title {
+    @apply text-title;
+    font-stretch: 115%;
+  }
+  .t-heading {
+    @apply text-heading;
+    font-stretch: 108%;
+  }
+  .t-sub {
+    @apply text-sub;
+    font-stretch: 104%;
+  }
+  .t-figure {
+    font-weight: 600;
+    font-stretch: 118%;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+
+  /* --- surfaces --- */
+  .panel {
+    @apply rounded-panel border bg-lake-850 shadow-panel;
+    border-color: var(--hairline);
+  }
+  .sunken {
+    @apply bg-lake-900;
+  }
+  .glass {
+    background: rgba(18, 41, 47, 0.74);
+    -webkit-backdrop-filter: blur(18px) saturate(1.4);
+    backdrop-filter: blur(18px) saturate(1.4);
+    border: 1px solid rgba(237, 243, 242, 0.1);
+  }
+
+  /* --- form controls --- */
+  .control {
+    @apply w-full rounded-control border bg-[#0B1C22] px-3.5 text-ui text-snow shadow-edge transition duration-quick ease-out placeholder:text-stone;
+    border-color: var(--line);
+    min-height: 44px;
+  }
+  .control:hover:not(:disabled) {
+    border-color: var(--line-strong);
+  }
+  .control:focus {
+    outline: none;
+    border-color: #f2b544;
+    box-shadow: 0 0 0 3px rgba(242, 181, 68, 0.22);
+  }
+  .control[aria-invalid="true"] {
+    border-color: #e5455f;
+  }
+  .control[aria-invalid="true"]:focus {
+    box-shadow: 0 0 0 3px rgba(229, 69, 95, 0.25);
+  }
+  .control:disabled {
+    @apply cursor-not-allowed opacity-60;
+  }
+
+  .skeleton {
+    @apply rounded-control;
+    background: linear-gradient(90deg, #173139 0%, #1d3a43 45%, #173139 90%);
+    background-size: 200% 100%;
+    @apply animate-shimmer;
+  }
+
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Hairline dividers between list rows. */
+  .rows > * + * {
+    border-top: 1px solid var(--hairline);
+  }
+}
+
+@layer utilities {
+  .wdth-95 {
+    font-stretch: 95%;
+  }
+  .wdth-104 {
+    font-stretch: 104%;
+  }
+  .wdth-110 {
+    font-stretch: 110%;
+  }
+  .border-hairline {
+    border-color: var(--hairline);
+  }
+  .border-line {
+    border-color: var(--line);
+  }
+  .border-line-strong {
+    border-color: var(--line-strong);
+  }
+  .text-balance {
+    text-wrap: balance;
+  }
+  .text-pretty {
+    text-wrap: pretty;
+  }
+}
+
+/* Reduced motion: the OS preference, or the in-app "Reduce effects" choice. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+html.reduce-effects *,
+html.reduce-effects *::before,
+html.reduce-effects *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+}
+html.reduce-effects .glass {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  background: #152c34;
+}

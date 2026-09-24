@@ -11,6 +11,8 @@ from app.api.v1 import (
     health,
     leave,
     mess,
+    notifications,
+    reports,
     rooms,
     students,
 )
@@ -28,5 +30,7 @@ api_router.include_router(announcements.router)
 api_router.include_router(documents.router)
 api_router.include_router(assistant.router)
 api_router.include_router(analytics.router)
+api_router.include_router(notifications.router)
+api_router.include_router(reports.router)
 
 __all__ = ["api_router"]

@@ -1,9 +1,11 @@
-.PHONY: up down api worker web test lint types migrate seed check eval
+.PHONY: up down api worker beat web test lint types migrate seed check eval
 
 up:      ; docker compose -f infrastructure/docker-compose.yml up -d
 down:    ; docker compose -f infrastructure/docker-compose.yml down
 api:     ; cd apps/api && ./.venv/bin/uvicorn app.main:app --reload
-worker:  ; cd apps/api && ./.venv/bin/celery -A app.workers.celery_app.celery_app worker -l info
+# Local: the worker also runs the scheduler (-B). Production: run `make beat` once, separately.
+worker:  ; cd apps/api && ./.venv/bin/celery -A app.workers.celery_app.celery_app worker -B -l info
+beat:    ; cd apps/api && ./.venv/bin/celery -A app.workers.celery_app.celery_app beat -l info
 web:     ; cd apps/web && npm run dev
 migrate: ; cd apps/api && ./.venv/bin/alembic upgrade head
 seed:    ; cd apps/api && ./.venv/bin/python scripts_seed.py
